@@ -26,17 +26,12 @@ Log ingestion, normalization, validation, error grouping, spike detection, and L
    pip install -r requirements.txt
    ```
 
-4. **Configure environment (optional, for LLM insights):**
+4. **Configure environment:**
 
    Copy `.env.example` to `.env` and add your API key(s). For **OpenRouter** (recommended, one API for 300+ models):
 
    - Get a key: [https://openrouter.ai/settings/keys](https://openrouter.ai/settings/keys)
    - In `.env`: `OPENROUTER_API_KEY=sk-or-v1-...`
-
-   Other options (used only if `OPENROUTER_API_KEY` is not set):
-
-   - **Gemini (free):** [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey) → `GEMINI_API_KEY=...`
-   - **OpenAI:** `OPENAI_API_KEY=sk-...`
 
    See `.env.example` for all options (e.g. `OPENROUTER_MODEL`, `DATABASE_URL`).
 
@@ -187,3 +182,4 @@ postman/
 ## Team
 
 Rohit, Sam, Bhargav — AI Log Investigation Assistant
+
