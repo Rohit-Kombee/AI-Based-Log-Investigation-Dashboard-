@@ -164,7 +164,8 @@ postman/
 
 ## Team
 
-Rohit, Sam, Bhargav — AI Log Investigation Assistant
+Rohit Sahu, Bhargav Bhutwala, Sam Wesley — AI Log Investigation Assistant
+
 
 
 
