@@ -84,8 +84,6 @@ The **Dashboard** ([http://127.0.0.1:5000/dashboard](http://127.0.0.1:5000/dashb
 - **LLM insights** summary (when an API key is configured).
 - **Tables** (up to 10 rows each) for recent logs, groups, spikes, and rejected logs.
 
-Add a screenshot of the dashboard here (e.g. save as `docs/dashboard.png` and use the image path below):
-
 <img width="1908" height="909" alt="image" src="https://github.com/user-attachments/assets/0103a0ce-b2a5-4f71-940c-2788753ea9de" />
 
 ---
@@ -98,8 +96,6 @@ The **Generator** ([http://127.0.0.1:5000/generator](http://127.0.0.1:5000/gener
 - **Choose a scenario** from a dropdown: Normal, Error spike, Malformed, Alternate fields, or Mixed.
 - **Set batches and batch size** and click **Send** to push log batches to the ingest API.
 - See **results** (accepted/rejected counts) and then check the **Dashboard** for the new data.
-
-Add a screenshot of the generator here (e.g. save as `docs/generator.png` and use the image path below):
 
 <img width="1903" height="907" alt="image" src="https://github.com/user-attachments/assets/19e53d3b-8afe-448c-8816-e8fe26cf5ff1" />
 
@@ -169,6 +165,7 @@ postman/
 ## Team
 
 Rohit, Sam, Bhargav — AI Log Investigation Assistant
+
 
 
 
