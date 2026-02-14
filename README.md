@@ -74,20 +74,6 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 5000
 | `/generator` | GET | Serves the generator HTML page. |
 | `/generator/send` | POST | Run a generator scenario: send batches of logs to ingest. Body: `scenario`, `batches`, `batch_size`. |
 
-**Example requests (base URL `http://127.0.0.1:5000`):**
-
-```bash
-# Ingest
-curl -X POST http://127.0.0.1:5000/ingest -H "Content-Type: application/json" -d "{\"logs\": [{\"level\": \"ERROR\", \"message\": \"Connection refused\", \"service\": \"api\", \"timestamp\": \"2025-02-14T12:00:00Z\"}]}"
-
-# Group
-curl "http://127.0.0.1:5000/group?limit=10"
-
-# Insights
-curl "http://127.0.0.1:5000/insights"
-```
-
----
 
 ## Dashboard
 
@@ -182,4 +168,5 @@ postman/
 ## Team
 
 Rohit, Sam, Bhargav — AI Log Investigation Assistant
+
 
