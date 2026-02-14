@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log Generator Dashboard</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      margin: 0;
+      padding: 1.5rem;
+      background: #f6f8fa;
+      color: #1f2328;
+      min-height: 100vh;
+    }
+    h1 { margin: 0 0 0.5rem 0; font-size: 1.5rem; font-weight: 600; }
+    .nav { margin-bottom: 1rem; }
+    .nav a { color: #0969da; text-decoration: none; margin-right: 1rem; }
+    .nav a:hover { text-decoration: underline; }
+    .meta { color: #656d76; font-size: 0.875rem; margin-bottom: 1.5rem; }
+    .form { max-width: 420px; }
+    .row { margin-bottom: 1rem; }
+    .row label { display: block; font-size: 0.8rem; color: #656d76; margin-bottom: 0.35rem; }
+    .row select, .row input {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      background: #fff;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      color: #1f2328;
+      font-size: 1rem;
+    }
+    .row input[type="number"] { max-width: 120px; }
+    .btn {
+      padding: 0.6rem 1.2rem;
+      background: #1a7f37;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.95rem;
+      cursor: pointer;
+      margin-top: 0.5rem;
+    }
+    .btn:hover { background: #2da44e; }
+    .btn:disabled { background: #d0d7de; color: #656d76; cursor: not-allowed; }
+    #result {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: #fff;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    #result.success { border-color: #1a7f37; }
+    #result.error { border-color: #cf222e; color: #cf222e; }
+    .muted { color: #656d76; }
+  </style>
+</head>
+<body>
+  <div class="nav">
+    <a href="/dashboard">Dashboard</a>
+    <a href="/generator">Generator</a>
+    <a href="/docs">API Docs</a>
+  </div>
+  <h1>Log Generator Dashboard</h1>
+  <p class="meta">Choose a scenario and send log batches to the ingest API. Results appear on the Dashboard.</p>
+
+  <div class="form">
+    <div class="row">
+      <label for="scenario">Scenario</label>
+      <select id="scenario">
+        <option value="normal">Normal — mixed levels, standard fields</option>
+        <option value="error_spike">Error spike — mostly ERROR logs</option>
+        <option value="malformed">Malformed — ~30% invalid (wrong level, empty message)</option>
+        <option value="alt_fields">Alternate fields — lvl, msg, ts, service_name</option>
+        <option value="mixed">Mixed — some malformed, some alternate fields</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="batches">Batches</label>
+      <input type="number" id="batches" value="20" min="1" max="100">
+    </div>
+    <div class="row">
+      <label for="batch_size">Logs per batch</label>
+      <input type="number" id="batch_size" value="5" min="1" max="50">
+    </div>
+    <button class="btn" id="sendBtn">Send logs</button>
+  </div>
+  <div id="result"></div>
+
+  <script>
+    (function() {
+      var base = window.location.origin;
+      var sendBtn = document.getElementById('sendBtn');
+      var resultEl = document.getElementById('result');
+      function showResult(msg, isError) {
+        resultEl.innerHTML = msg;
+        resultEl.className = isError ? 'error' : 'success';
+      }
+      sendBtn.addEventListener('click', function() {
+        var scenario = document.getElementById('scenario').value;
+        var batches = parseInt(document.getElementById('batches').value, 10) || 20;
+        var batch_size = parseInt(document.getElementById('batch_size').value, 10) || 5;
+        batches = Math.max(1, Math.min(100, batches));
+        batch_size = Math.max(1, Math.min(50, batch_size));
+        sendBtn.disabled = true;
+        showResult('Sending…', false);
+        var req = new XMLHttpRequest();
+        req.open('POST', base + '/generator/send', true);
+        req.setRequestHeader('Content-Type', 'application/json');
+        req.onreadystatechange = function() {
+          if (req.readyState !== 4) return;
+          sendBtn.disabled = false;
+          if (req.status !== 200) {
+            showResult('Error: ' + req.status + ' ' + req.statusText, true);
+            return;
+          }
+          try {
+            var data = JSON.parse(req.responseText);
+            showResult(
+              '<strong>' + data.message + '</strong><br>' +
+              'Batches sent: ' + data.batches_sent + ' &middot; Accepted: ' + data.total_accepted + ' &middot; Rejected: ' + data.total_rejected +
+              '<br><span class="muted">Check the Dashboard and click a card to see log messages.</span>',
+              false
+            );
+          } catch (e) {
+            showResult('Invalid response: ' + e.message, true);
+          }
+        };
+        req.onerror = function() {
+          sendBtn.disabled = false;
+          showResult('Network error. Is the server running?', true);
+        };
+        req.send(JSON.stringify({ scenario: scenario, batches: batches, batch_size: batch_size }));
+      });
+    })();
+  </script>
+</body>
+</html>

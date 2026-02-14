@@ -1,0 +1,281 @@
+{
+  "info": {
+    "name": "AI Log Investigation Assistant",
+    "description": "Build Goals & Key APIs — for correctness, edge cases, and evaluation.\n\n**Base URL:** `{{base_url}}` (default http://127.0.0.1:5000)\n\n**Key APIs:**\n- POST /ingest — Accept raw logs\n- POST /normalize — Convert to canonical schema\n- POST /validate — Reject malformed logs\n- GET /group — Cluster similar errors\n- GET /insights — LLM-generated summary\n- GET /spikes — Surface spikes",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:5000" }
+  ],
+  "item": [
+    {
+      "name": "1. Ingest — Accept logs",
+      "item": [
+        {
+          "name": "Ingest — Valid logs (standard fields)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"logs\": [\n    {\n      \"timestamp\": \"2025-02-14T12:00:00Z\",\n      \"level\": \"ERROR\",\n      \"message\": \"Connection timeout to database\",\n      \"service\": \"api-gateway\",\n      \"correlation_id\": \"req-1234\"\n    },\n    {\n      \"timestamp\": \"2025-02-14T12:01:00Z\",\n      \"level\": \"INFO\",\n      \"message\": \"Request completed\",\n      \"service\": \"auth-service\"\n    }\n  ]\n}"
+            },
+            "url": "{{base_url}}/ingest",
+            "description": "**Expected:** 200, `accepted: 2`, `rejected: 0`, `errors: []`"
+          }
+        },
+        {
+          "name": "Ingest — Valid logs (alternate fields)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"logs\": [\n    {\n      \"lvl\": \"WARNING\",\n      \"msg\": \"Rate limit exceeded\",\n      \"service_name\": \"user-service\",\n      \"ts\": 1707897600000,\n      \"traceId\": \"req-5678\"\n    }\n  ]\n}"
+            },
+            "url": "{{base_url}}/ingest",
+            "description": "**Expected:** 200, normalized and stored; `accepted: 1`, `rejected: 0`"
+          }
+        },
+        {
+          "name": "Ingest — Empty logs array",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"logs\": []\n}"
+            },
+            "url": "{{base_url}}/ingest",
+            "description": "**Expected:** 200, `accepted: 0`, `rejected: 0`, `errors: []` (edge case: empty batch)"
+          }
+        },
+        {
+          "name": "Ingest — Malformed (invalid level, empty message)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"logs\": [\n    {\n      \"level\": \"INVALID\",\n      \"message\": \"\",\n      \"service\": \"test\"\n    }\n  ]\n}"
+            },
+            "url": "{{base_url}}/ingest",
+            "description": "**Expected:** 200, `accepted: 0`, `rejected: 1`, `errors` with reason (e.g. Invalid level)"
+          }
+        },
+        {
+          "name": "Ingest — Mixed (valid + malformed)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"logs\": [\n    { \"level\": \"INFO\", \"message\": \"Valid log\", \"service\": \"svc1\" },\n    { \"level\": \"INVALID\", \"message\": \"\" },\n    { \"level\": \"ERROR\", \"message\": \"Another valid\", \"service\": \"svc2\" }\n  ]\n}"
+            },
+            "url": "{{base_url}}/ingest",
+            "description": "**Expected:** 200, `accepted: 2`, `rejected: 1`, `errors` has one entry (index 1)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Normalize — Canonical schema",
+      "item": [
+        {
+          "name": "Normalize — Standard raw log",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"log\": {\n    \"timestamp\": \"2025-02-14T12:00:00Z\",\n    \"level\": \"ERROR\",\n    \"message\": \"Connection refused\",\n    \"service\": \"api-gateway\"\n  }\n}"
+            },
+            "url": "{{base_url}}/normalize",
+            "description": "**Expected:** 200, JSON with `timestamp`, `level`, `message`, `service` (canonical shape)"
+          }
+        },
+        {
+          "name": "Normalize — Alternate fields (lvl, msg, ts)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"log\": {\n    \"lvl\": \"INFO\",\n    \"msg\": \"Health check passed\",\n    \"service_name\": \"auth-service\",\n    \"ts\": 1707897600000\n  }\n}"
+            },
+            "url": "{{base_url}}/normalize",
+            "description": "**Expected:** 200, canonical output with level=INFO, message=Health check passed, service=auth-service"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Validate — Reject malformed",
+      "item": [
+        {
+          "name": "Validate — Valid log",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"log\": {\n    \"level\": \"ERROR\",\n    \"message\": \"Connection timeout\",\n    \"service\": \"api\"\n  }\n}"
+            },
+            "url": "{{base_url}}/validate",
+            "description": "**Expected:** 200, `valid: true`, `errors: []`"
+          }
+        },
+        {
+          "name": "Validate — Invalid log (bad level)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"log\": {\n    \"level\": \"INVALID\",\n    \"message\": \"test\"\n  }\n}"
+            },
+            "url": "{{base_url}}/validate",
+            "description": "**Expected:** 200, `valid: false`, `errors` list with message like Invalid level"
+          }
+        },
+        {
+          "name": "Validate — Invalid (empty message)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"log\": {\n    \"level\": \"INFO\",\n    \"message\": \"\"\n  }\n}"
+            },
+            "url": "{{base_url}}/validate",
+            "description": "**Expected:** 200, `valid: false` or valid depending on your rules; check `errors`"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Group — Cluster similar errors",
+      "item": [
+        {
+          "name": "Group — All (default)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/group",
+              "host": ["{{base_url}}"],
+              "path": ["group"]
+            },
+            "description": "**Expected:** 200, `groups` array (each: group_id, count, level, service, sample_message, first_seen, last_seen), `total_groups`"
+          }
+        },
+        {
+          "name": "Group — With limit & service",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/group?limit=10&service=api-gateway",
+              "host": ["{{base_url}}"],
+              "path": ["group"],
+              "query": [
+                { "key": "limit", "value": "10" },
+                { "key": "service", "value": "api-gateway" }
+              ]
+            },
+            "description": "**Expected:** 200, groups filtered by service, max 10"
+          }
+        },
+        {
+          "name": "Group — By level ERROR",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/group?level=ERROR&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["group"],
+              "query": [
+                { "key": "level", "value": "ERROR" },
+                { "key": "limit", "value": "20" }
+              ]
+            },
+            "description": "**Expected:** 200, only ERROR-level groups"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Spikes — Patterns & spikes",
+      "item": [
+        {
+          "name": "Spikes — Default",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/spikes",
+              "host": ["{{base_url}}"],
+              "path": ["spikes"]
+            },
+            "description": "**Expected:** 200, `spikes` array (group_id, service, level, count, baseline_avg, ratio)"
+          }
+        },
+        {
+          "name": "Spikes — Custom window",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/spikes?window_minutes=10&ratio_threshold=2.0",
+              "host": ["{{base_url}}"],
+              "path": ["spikes"],
+              "query": [
+                { "key": "window_minutes", "value": "10" },
+                { "key": "ratio_threshold", "value": "2.0" }
+              ]
+            },
+            "description": "**Expected:** 200, spikes with 10-min window, 2x ratio"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Insights — LLM summary",
+      "item": [
+        {
+          "name": "Insights — Default",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/insights",
+              "host": ["{{base_url}}"],
+              "path": ["insights"]
+            },
+            "description": "**Expected:** 200, `summary` (text), `top_groups`, `spikes`. If OPENAI_API_KEY set → LLM summary; else fallback text."
+          }
+        },
+        {
+          "name": "Insights — Filter by service",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/insights?service=api-gateway",
+              "host": ["{{base_url}}"],
+              "path": ["insights"],
+              "query": [{ "key": "service", "value": "api-gateway" }]
+            },
+            "description": "**Expected:** 200, insights scoped to service"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        },
+        "description": "**Expected:** 200, `{\"status\": \"ok\"}`"
+      }
+    }
+  ]
+}

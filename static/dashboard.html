@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log Investigation Dashboard</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      margin: 0;
+      padding: 1.5rem;
+      background: #f6f8fa;
+      color: #1f2328;
+      min-height: 100vh;
+    }
+    h1 { margin: 0 0 0.5rem 0; font-size: 1.5rem; font-weight: 600; }
+    .nav { margin-bottom: 1rem; }
+    .nav a { color: #0969da; text-decoration: none; margin-right: 1rem; }
+    .nav a:hover { text-decoration: underline; }
+    .meta { color: #656d76; font-size: 0.8rem; margin-bottom: 1rem; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #d0d7de;
+      border-radius: 10px;
+      padding: 1rem;
+      cursor: pointer;
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+    .card:hover { border-color: #0969da; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .card.active { border-color: #0969da; background: #eaeef2; }
+    .card .label {
+      font-size: 0.7rem;
+      color: #656d76;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.35rem;
+    }
+    .card .value { font-size: 1.75rem; font-weight: 700; }
+    .card.total .value { color: #0969da; }
+    .card.accepted .value { color: #1a7f37; }
+    .card.rejected .value { color: #cf222e; }
+    .card.spikes .value { color: #9a6700; }
+    .card.groups .value { color: #8250df; }
+    .card.insights .value { color: #0969da; font-size: 1.1rem; }
+    .insights-summary { padding: 1rem; white-space: pre-wrap; line-height: 1.5; }
+    .section { margin-bottom: 1rem; }
+    .section h2 { font-size: 0.95rem; color: #656d76; margin: 0 0 0.5rem 0; }
+    .table-wrap {
+      background: #fff;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #d0d7de; font-size: 0.875rem; }
+    th { background: #f6f8fa; color: #656d76; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    tr:last-child td { border-bottom: none; }
+    .error { color: #cf222e; }
+    .loading { color: #656d76; }
+    .empty { color: #656d76; padding: 1rem; text-align: center; }
+    .msg-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <div class="nav">
+    <a href="/dashboard">Dashboard</a>
+    <a href="/generator">Generator</a>
+    <a href="/docs">API Docs</a>
+  </div>
+  <h1>Log Investigation Dashboard</h1>
+  <p class="meta" id="meta">Loading…</p>
+  <div id="cards" class="cards"></div>
+  <div class="section">
+    <h2 id="tableTitle">Click a card to see data (10 rows) or AI Insights</h2>
+    <div id="tableWrap" class="table-wrap">
+      <p class="empty" id="tableEmpty">Select Total logs, Rejected, Error groups, Spikes, or AI Insights.</p>
+      <div id="insightsBox" class="insights-summary" style="display:none;"></div>
+      <table id="dataTable" style="display:none;"><thead id="dataThead"></thead><tbody id="dataTbody"></tbody></table>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      var base = window.location.origin;
+      var activeCard = null;
+      function el(tag, attrs, children) {
+        var e = document.createElement(tag);
+        if (attrs) {
+          if (attrs.className) e.className = attrs.className;
+          if (attrs.colSpan != null) e.setAttribute('colspan', attrs.colSpan);
+        }
+        if (children && children.length) {
+          for (var i = 0; i < children.length; i++) {
+            var c = children[i];
+            e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+          }
+        }
+        return e;
+      }
+      function loadStats(cb) {
+        var req = new XMLHttpRequest();
+        req.open('GET', base + '/stats', true);
+        req.onreadystatechange = function() {
+          if (req.readyState !== 4) return;
+          if (req.status !== 200) { cb(null); return; }
+          try { cb(JSON.parse(req.responseText)); } catch (e) { cb(null); }
+        };
+        req.send();
+      }
+      function renderCards(data) {
+        var root = document.getElementById('cards');
+        root.innerHTML = '';
+        if (!data) {
+          root.innerHTML = '<p class="error">Failed to load stats.</p>';
+          return;
+        }
+        var totalRejected = data.total_rejected != null ? data.total_rejected : 0;
+        var cards = [
+          { id: 'logs', label: 'Total logs in DB', value: String(data.total_logs || 0), className: 'card total' },
+          { id: 'rejected', label: 'Rejected (all)', value: String(totalRejected), className: 'card rejected' },
+          { id: 'groups', label: 'Error groups', value: String(data.total_groups || 0), className: 'card groups' },
+          { id: 'spikes', label: 'Spikes (current)', value: String(data.spikes_count || 0), className: 'card spikes' },
+          { id: 'insights', label: 'AI Insights', value: 'View', className: 'card insights' }
+        ];
+        cards.forEach(function(c) {
+          var card = el('div', { className: c.className + (activeCard === c.id ? ' active' : ''), 'data-id': c.id }, [
+            el('div', { className: 'label' }, [c.label]),
+            el('div', { className: 'value' }, [c.value])
+          ]);
+          card.onclick = function() { showDrillDown(c.id); };
+          root.appendChild(card);
+        });
+      }
+      function showDrillDown(id) {
+        activeCard = id;
+        var tableEmpty = document.getElementById('tableEmpty');
+        var dataTable = document.getElementById('dataTable');
+        var title = document.getElementById('tableTitle');
+        var thead = document.getElementById('dataThead');
+        var tbody = document.getElementById('dataTbody');
+        tableEmpty.style.display = 'none';
+        title.textContent = 'Loading…';
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+        if (id === 'insights') {
+          dataTable.style.display = 'none';
+          tableEmpty.style.display = 'none';
+          var insightsBox = document.getElementById('insightsBox');
+          insightsBox.style.display = 'block';
+          insightsBox.textContent = 'Loading…';
+          var req = new XMLHttpRequest();
+          req.open('GET', base + '/insights', true);
+          req.onreadystatechange = function() {
+            if (req.readyState !== 4) return;
+            insightsBox.style.display = 'block';
+            if (req.status !== 200) {
+              title.textContent = 'Error loading insights';
+              insightsBox.textContent = req.status + ' ' + req.statusText;
+              renderCards(window._lastStats);
+              return;
+            }
+            try {
+              var data = JSON.parse(req.responseText);
+              title.textContent = 'AI Insights — human-friendly summary (uses OpenAI if API key is set)';
+              insightsBox.textContent = data.summary || 'No summary.';
+              renderCards(window._lastStats);
+            } catch (e) {
+              title.textContent = 'Error';
+              insightsBox.textContent = e.message;
+            }
+          };
+          req.send();
+          return;
+        }
+        document.getElementById('insightsBox').style.display = 'none';
+        dataTable.style.display = 'table';
+        var url = base + '/api/' + (id === 'logs' ? 'logs' : id === 'rejected' ? 'rejected' : id === 'groups' ? 'groups' : 'spikes') + '?limit=10';
+        var req = new XMLHttpRequest();
+        req.open('GET', url, true);
+        req.onreadystatechange = function() {
+          if (req.readyState !== 4) return;
+          if (req.status !== 200) {
+            title.textContent = 'Error loading data';
+            tbody.appendChild(el('tr', {}, [el('td', { colSpan: 5 }, [req.status + ' ' + req.statusText])]));
+            return;
+          }
+          try {
+            var data = JSON.parse(req.responseText);
+            if (id === 'logs') {
+              title.textContent = 'Recent logs in DB (10) — message, level, service';
+              thead.appendChild(el('tr', {}, [el('th', {}, ['Time']), el('th', {}, ['Level']), el('th', {}, ['Service']), el('th', {}, ['Message'])]));
+              var logs = data.logs || [];
+              logs.forEach(function(r) {
+                tbody.appendChild(el('tr', {}, [
+                  el('td', {}, [r.timestamp ? r.timestamp.slice(0, 19) : '—']),
+                  el('td', {}, [r.level || '—']),
+                  el('td', {}, [r.service || '—']),
+                  el('td', { className: 'msg-cell' }, [r.message || '—'])
+                ]));
+              });
+            } else if (id === 'rejected') {
+              title.textContent = 'Recent rejected entries (10)';
+              thead.appendChild(el('tr', {}, [el('th', {}, ['Time']), el('th', {}, ['Error'])]));
+              var rej = data.rejected || [];
+              rej.forEach(function(r) {
+                tbody.appendChild(el('tr', {}, [
+                  el('td', {}, [r.at ? r.at.slice(0, 19) : '—']),
+                  el('td', {}, [r.error || '—'])
+                ]));
+              });
+            } else if (id === 'groups') {
+              title.textContent = 'Error groups (10) — sample message, count';
+              thead.appendChild(el('tr', {}, [el('th', {}, ['Service']), el('th', {}, ['Level']), el('th', {}, ['Count']), el('th', {}, ['Sample message'])]));
+              var groups = data.groups || [];
+              groups.forEach(function(g) {
+                tbody.appendChild(el('tr', {}, [
+                  el('td', {}, [g.service || '—']),
+                  el('td', {}, [g.level || '—']),
+                  el('td', {}, [String(g.count || 0)]),
+                  el('td', { className: 'msg-cell' }, [g.sample_message || '—'])
+                ]));
+              });
+            } else if (id === 'spikes') {
+              title.textContent = 'Current spikes (10)';
+              thead.appendChild(el('tr', {}, [el('th', {}, ['Service']), el('th', {}, ['Level']), el('th', {}, ['Count']), el('th', {}, ['Ratio'])]));
+              var spikes = data.spikes || [];
+              spikes.forEach(function(s) {
+                tbody.appendChild(el('tr', {}, [
+                  el('td', {}, [s.service || '—']),
+                  el('td', {}, [s.level || '—']),
+                  el('td', {}, [String(s.count || 0)]),
+                  el('td', {}, [String(s.ratio != null ? s.ratio : '—')])
+                ]));
+              });
+            }
+            renderCards(window._lastStats);
+          } catch (e) {
+            title.textContent = 'Error';
+            tbody.appendChild(el('tr', {}, [el('td', { colSpan: 5 }, [e.message])]));
+          }
+        };
+        req.send();
+      }
+      function refresh() {
+        var meta = document.getElementById('meta');
+        loadStats(function(data) {
+          window._lastStats = data;
+          meta.textContent = data ? ('Last updated: ' + new Date().toLocaleTimeString() + ' — refreshes every 3s') : 'Error loading stats';
+          renderCards(data);
+        });
+      }
+      refresh();
+      setInterval(refresh, 3000);
+    })();
+  </script>
+</body>
+</html>
